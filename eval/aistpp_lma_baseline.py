@@ -126,20 +126,20 @@ def load_joints(pkl_path: str) -> np.ndarray:
 
 def parse_filename(fname: str):
     """
-    gBR_sBM_cAll_d04_mBR1_ch02  ->  (music_id='mBR1', dancer_id='d04')
+    gBR_sBM_cAll_d04_mBR1_ch02  ->  (music_id='mBR1', dancer_id='d04', chunk_id='ch02')
+    chunk_id is the last field (ch01, ch02, …) — each is a 5-second segment of the
+    full performance.  Pairing by the same chunk_id ensures both sequences correspond
+    to the same musical window.
     """
-    base   = os.path.splitext(os.path.basename(fname))[0]
-    parts  = base.split("_")
-    # Expect at least 5 parts: genre, style, cAll, dancer, music[, cam]
-    if len(parts) < 5:
-        return None, None
+    base  = os.path.splitext(os.path.basename(fname))[0]
+    parts = base.split("_")
+    # Expect at least 6 parts: genre, style, cAll, dancer, music, chunk
+    if len(parts) < 6:
+        return None, None, None
     dancer_id = parts[3]   # e.g. 'd04'
     music_id  = parts[4]   # e.g. 'mBR1'
-    # strip any slice index if present (sliced files have _slice0 suffix)
-    if music_id.startswith("m") and not music_id[1:].replace("0","").replace("1","") \
-            .replace("2","").replace("3","").replace("4","").replace("5","").isalpha():
-        pass   # already clean
-    return music_id, dancer_id
+    chunk_id  = parts[5]   # e.g. 'ch02'
+    return music_id, dancer_id, chunk_id
 
 
 def pearson_windows(f1: np.ndarray, f2: np.ndarray) -> np.ndarray:
@@ -188,8 +188,8 @@ def main():
         help="Directory containing raw AIST++ .pkl motion files",
     )
     parser.add_argument(
-        "--max_pairs_per_group", type=int, default=6,
-        help="Cap pairs per music group to limit runtime (0 = no cap)",
+        "--max_pairs_per_group", type=int, default=0,
+        help="Cap ordered pairs per (music_id, chunk_id) group (0 = no cap)",
     )
     parser.add_argument(
         "--downsample", type=int, default=2,
@@ -206,22 +206,40 @@ def main():
         print(f"ERROR: --data_dir not found: {data_dir}")
         sys.exit(1)
 
-    # ── 1. Collect files, group by music_id → {dancer_id: first_pkl} ──────
+    # ── 1. Collect files, group by music_id → chunk_id → {dancer_id: path} ──
+    #
+    # AIST++ has two recording conditions in the same directory:
+    #   sBM  (Style: Basic Movement) — multiple dancers captured simultaneously,
+    #        pre-sliced into equal-length chunks ch01-ch10.  Same chunk_id across
+    #        dancers IS the same musical time window.  ← use these.
+    #   sFM  (Style: Free Movement)  — solo full-length recordings; their ch
+    #        numbers are camera/take IDs, NOT sequential time slices.  ← exclude.
+    #
+    # Only pairing same-chunk_id sBM sequences guarantees time alignment.
     all_files = sorted(glob.glob(os.path.join(data_dir, "*.pkl")))
     if not all_files:
         print(f"ERROR: No .pkl files found in {data_dir}")
         sys.exit(1)
 
-    # For each (music_id, dancer_id) keep only the first camera file
-    groups: dict = defaultdict(dict)   # music_id → {dancer_id: path}
-    skip_count = 0
-    for fpath in all_files:
-        music_id, dancer_id = parse_filename(fpath)
+    sbm_files  = [f for f in all_files if "_sBM_" in os.path.basename(f)]
+    skip_count = len(all_files) - len(sbm_files)
+
+    # chunk_groups[music_id][chunk_id] = {dancer_id: path}
+    chunk_groups: dict = defaultdict(lambda: defaultdict(dict))
+    for fpath in sbm_files:
+        music_id, dancer_id, chunk_id = parse_filename(fpath)
         if music_id is None:
             skip_count += 1
             continue
-        if dancer_id not in groups[music_id]:
-            groups[music_id][dancer_id] = fpath
+        chunk_groups[music_id][chunk_id][dancer_id] = fpath
+
+    # Summary counts
+    n_music_ids   = len(chunk_groups)
+    n_total_seqs  = sum(
+        len(dancers)
+        for cmap in chunk_groups.values()
+        for dancers in cmap.values()
+    )
 
     lines = []
     def log(s=""):
@@ -233,12 +251,13 @@ def main():
     log("  AIST++ LMA Baseline Similarity Report")
     log("=" * 72)
     log(f"  Data directory : {data_dir}")
-    log(f"  Total pkl files: {len(all_files)}  |  skipped: {skip_count}")
-    log(f"  Unique music IDs        : {len(groups)}")
-    log(f"  Unique dancer-music seqs: {sum(len(v) for v in groups.values())}")
+    log(f"  Total pkl files: {len(all_files)}  |  sBM used: {len(sbm_files)}  |  sFM excluded: {skip_count}")
+    log(f"  Unique music IDs        : {n_music_ids}")
+    log(f"  Total sBM seqs indexed  : {n_total_seqs}")
+    log(f"  Pairing strategy        : same chunk_id (time-aligned), different dancer_id, sBM only")
     log(f"  Downsample factor       : {args.downsample}  "
         f"(raw 60fps → {60 // args.downsample}fps)")
-    log(f"  Max pairs per group     : "
+    log(f"  Max pairs per chunk     : "
         f"{'unlimited' if args.max_pairs_per_group == 0 else args.max_pairs_per_group}")
     log()
 
@@ -247,39 +266,38 @@ def main():
     total_pairs = 0
     t0 = time.time()
 
-    music_ids_sorted = sorted(groups.keys())   # e.g. mBR0, mBR1, ...
-
-    for music_id in music_ids_sorted:
-        dancer_map = groups[music_id]
-        dancers    = sorted(dancer_map.keys())
-        if len(dancers) < 2:
-            continue
-
-        # Build all ordered pairs (lead, follower) with lead != follower
-        pairs = []
-        for i in range(len(dancers)):
-            for j in range(len(dancers)):
-                if i != j:
-                    pairs.append((dancers[i], dancers[j]))
-
-        if args.max_pairs_per_group > 0:
-            pairs = pairs[:args.max_pairs_per_group]
-
+    for music_id in sorted(chunk_groups.keys()):
+        cmap         = chunk_groups[music_id]   # chunk_id → {dancer_id: path}
         group_scores = []
 
-        for (lead_id, follower_id) in pairs:
-            lead_path     = dancer_map[lead_id]
-            follower_path = dancer_map[follower_id]
+        for chunk_id in sorted(cmap.keys()):
+            dancer_map = cmap[chunk_id]         # {dancer_id: path}
+            dancers    = sorted(dancer_map.keys())
+            if len(dancers) < 2:
+                continue
 
-            try:
-                lead_j = load_joints(lead_path)[::args.downsample]
-                foll_j = load_joints(follower_path)[::args.downsample]
-                res    = score_pair(lead_j, foll_j)
-                group_scores.append(res)
-                all_results.append(res)
-                total_pairs += 1
-            except Exception as e:
-                log(f"  [WARN] {music_id} {lead_id}→{follower_id}: {e}")
+            # All ordered (lead, follower) pairs where lead ≠ follower
+            pairs = [
+                (dancers[i], dancers[j])
+                for i in range(len(dancers))
+                for j in range(len(dancers))
+                if i != j
+            ]
+            if args.max_pairs_per_group > 0:
+                pairs = pairs[:args.max_pairs_per_group]
+
+            for lead_id, follower_id in pairs:
+                lead_path     = dancer_map[lead_id]
+                follower_path = dancer_map[follower_id]
+                try:
+                    lead_j = load_joints(lead_path)[::args.downsample]
+                    foll_j = load_joints(follower_path)[::args.downsample]
+                    res    = score_pair(lead_j, foll_j)
+                    group_scores.append(res)
+                    all_results.append(res)
+                    total_pairs += 1
+                except Exception as e:
+                    log(f"  [WARN] {music_id}/{chunk_id} {lead_id}→{follower_id}: {e}")
 
         if group_scores:
             g_total  = np.mean([r["total_score"]  for r in group_scores])
@@ -287,7 +305,7 @@ def main():
             g_effort = np.mean([r["effort_score"] for r in group_scores])
             g_shape  = np.mean([r["shape_score"]  for r in group_scores])
             g_space  = np.mean([r["space_score"]  for r in group_scores])
-            log(f"  {music_id:6s}  n_pairs={len(group_scores):2d}"
+            log(f"  {music_id:6s}  n_pairs={len(group_scores):3d}"
                 f"  total={g_total:.3f}"
                 f"  body={g_body:.3f}  effort={g_effort:.3f}"
                 f"  shape={g_shape:.3f}  space={g_space:.3f}")
@@ -328,9 +346,9 @@ def main():
         log("    >0.5 = positively correlated (more similar)")
         log("    <0.5 = negatively correlated (mirror/opposite movement)")
         log()
-        log("  These scores represent real AIST++ dancers performing")
-        log("  the same song independently — NOT reacting to each other.")
-        log("  Use them as the reference ceiling for the duet diffusion model.")
+        log("  Pairing: same 5-second chunk, different dancers performing")
+        log("  the same BGM independently — NOT reacting to each other.")
+        log("  Use these scores as the reference ceiling for the duet model.")
 
     log()
     log("=" * 72)

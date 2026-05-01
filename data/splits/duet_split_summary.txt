@@ -1,31 +1,20 @@
-AIST++ Duet Split Summary
-============================================================
+AIST++ Duet Split Summary (sBM only, official music_id split)
+====================================================================
 
-Design: split at music_id level (no same-song data across splits)
-  Train: 40 music_ids (4/genre × 10 genres)
-  Val  : 10 music_ids (1/genre × 10 genres) — disjoint from Test
-  Test : 10 music_ids (1/genre × 10 genres) — same as official crossmodal_test
+  Recording condition: sBM only
+    sBM = multiple dancers captured simultaneously, pre-sliced to
+          equal-length chunks ch01-ch10.  Same chunk_id across
+          dancers IS the same musical time window.
+    sFM = solo full-length recordings, excluded (ch numbers are
+          camera/take IDs, not time-aligned across dancers).
 
-  Train sequences: 942
-  Val   sequences: 237
-  Test  sequences: 229
-  Total          : 1408
+  Official train music_ids: 50 (50 music_ids)
+  Official held-out music_ids: 10
+    ['mBR0', 'mHO5', 'mJB5', 'mJS3', 'mKR2', 'mLH4', 'mLO2', 'mMH3', 'mPO1', 'mWA0']
 
-Per-genre music_id assignments:
-------------------------------------------------------------
-  BR  train=['mBR1', 'mBR2', 'mBR3', 'mBR4']  val=['mBR5']  test=['mBR0']
-  HO  train=['mHO0', 'mHO1', 'mHO2', 'mHO3']  val=['mHO4']  test=['mHO5']
-  JB  train=['mJB0', 'mJB1', 'mJB2', 'mJB3']  val=['mJB4']  test=['mJB5']
-  JS  train=['mJS0', 'mJS1', 'mJS2', 'mJS4']  val=['mJS5']  test=['mJS3']
-  KR  train=['mKR0', 'mKR1', 'mKR3', 'mKR4']  val=['mKR5']  test=['mKR2']
-  LH  train=['mLH0', 'mLH1', 'mLH2', 'mLH3']  val=['mLH5']  test=['mLH4']
-  LO  train=['mLO0', 'mLO1', 'mLO3', 'mLO4']  val=['mLO5']  test=['mLO2']
-  MH  train=['mMH0', 'mMH1', 'mMH2', 'mMH4']  val=['mMH5']  test=['mMH3']
-  PO  train=['mPO0', 'mPO2', 'mPO3', 'mPO4']  val=['mPO5']  test=['mPO1']
-  WA  train=['mWA1', 'mWA2', 'mWA3', 'mWA4']  val=['mWA5']  test=['mWA0']
+  duet_train :  999 seqs  → data/train/  (training)
+  duet_test  :  200 seqs  → data/test/   (monitoring during training)
+  duet_val   :   20 seqs  → data/val/    (final LMA eval, ch01 only)
 
-Duet pairing stats (sequences with ≥2 dancers → valid lead/follower pairs):
-------------------------------------------------------------
-  train: 40 music_ids, ordered dancer pairs = 240 (× sequences per dancer for actual training pairs)
-  val  : 10 music_ids, ordered dancer pairs = 60 (× sequences per dancer for actual training pairs)
-  test : 10 music_ids, ordered dancer pairs = 56 (× sequences per dancer for actual training pairs)
+  Note: val ⊂ test (val is the ch01 subset of test).
+  No sequence leakage between train and held-out sets.

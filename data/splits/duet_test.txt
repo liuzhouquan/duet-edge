@@ -18,7 +18,6 @@ gBR_sBM_cAll_d05_mBR0_ch07
 gBR_sBM_cAll_d05_mBR0_ch08
 gBR_sBM_cAll_d05_mBR0_ch09
 gBR_sBM_cAll_d05_mBR0_ch10
-gBR_sFM_cAll_d04_mBR0_ch01
 gHO_sBM_cAll_d20_mHO5_ch01
 gHO_sBM_cAll_d20_mHO5_ch02
 gHO_sBM_cAll_d20_mHO5_ch03
@@ -39,9 +38,6 @@ gHO_sBM_cAll_d21_mHO5_ch07
 gHO_sBM_cAll_d21_mHO5_ch08
 gHO_sBM_cAll_d21_mHO5_ch09
 gHO_sBM_cAll_d21_mHO5_ch10
-gHO_sFM_cAll_d19_mHO5_ch06
-gHO_sFM_cAll_d20_mHO5_ch13
-gHO_sFM_cAll_d21_mHO5_ch20
 gJB_sBM_cAll_d08_mJB5_ch01
 gJB_sBM_cAll_d08_mJB5_ch02
 gJB_sBM_cAll_d08_mJB5_ch03
@@ -62,10 +58,6 @@ gJB_sBM_cAll_d09_mJB5_ch07
 gJB_sBM_cAll_d09_mJB5_ch08
 gJB_sBM_cAll_d09_mJB5_ch09
 gJB_sBM_cAll_d09_mJB5_ch10
-gJB_sFM_cAll_d07_mJB5_ch06
-gJB_sFM_cAll_d08_mJB5_ch13
-gJB_sFM_cAll_d08_mJB5_ch14
-gJB_sFM_cAll_d09_mJB5_ch20
 gJS_sBM_cAll_d01_mJS3_ch01
 gJS_sBM_cAll_d01_mJS3_ch02
 gJS_sBM_cAll_d01_mJS3_ch03
@@ -86,9 +78,6 @@ gJS_sBM_cAll_d03_mJS3_ch07
 gJS_sBM_cAll_d03_mJS3_ch08
 gJS_sBM_cAll_d03_mJS3_ch09
 gJS_sBM_cAll_d03_mJS3_ch10
-gJS_sFM_cAll_d01_mJS3_ch04
-gJS_sFM_cAll_d02_mJS3_ch04
-gJS_sFM_cAll_d03_mJS3_ch04
 gKR_sBM_cAll_d28_mKR2_ch01
 gKR_sBM_cAll_d28_mKR2_ch02
 gKR_sBM_cAll_d28_mKR2_ch03
@@ -109,9 +98,6 @@ gKR_sBM_cAll_d30_mKR2_ch07
 gKR_sBM_cAll_d30_mKR2_ch08
 gKR_sBM_cAll_d30_mKR2_ch09
 gKR_sBM_cAll_d30_mKR2_ch10
-gKR_sFM_cAll_d28_mKR2_ch03
-gKR_sFM_cAll_d29_mKR2_ch10
-gKR_sFM_cAll_d30_mKR2_ch17
 gLH_sBM_cAll_d17_mLH4_ch01
 gLH_sBM_cAll_d17_mLH4_ch02
 gLH_sBM_cAll_d17_mLH4_ch03
@@ -132,9 +118,6 @@ gLH_sBM_cAll_d18_mLH4_ch07
 gLH_sBM_cAll_d18_mLH4_ch08
 gLH_sBM_cAll_d18_mLH4_ch09
 gLH_sBM_cAll_d18_mLH4_ch10
-gLH_sFM_cAll_d16_mLH4_ch05
-gLH_sFM_cAll_d17_mLH4_ch12
-gLH_sFM_cAll_d18_mLH4_ch19
 gLO_sBM_cAll_d13_mLO2_ch01
 gLO_sBM_cAll_d13_mLO2_ch02
 gLO_sBM_cAll_d13_mLO2_ch03
@@ -155,9 +138,6 @@ gLO_sBM_cAll_d15_mLO2_ch07
 gLO_sBM_cAll_d15_mLO2_ch08
 gLO_sBM_cAll_d15_mLO2_ch09
 gLO_sBM_cAll_d15_mLO2_ch10
-gLO_sFM_cAll_d13_mLO2_ch03
-gLO_sFM_cAll_d14_mLO2_ch10
-gLO_sFM_cAll_d15_mLO2_ch17
 gMH_sBM_cAll_d22_mMH3_ch01
 gMH_sBM_cAll_d22_mMH3_ch02
 gMH_sBM_cAll_d22_mMH3_ch03
@@ -178,9 +158,6 @@ gMH_sBM_cAll_d24_mMH3_ch07
 gMH_sBM_cAll_d24_mMH3_ch08
 gMH_sBM_cAll_d24_mMH3_ch09
 gMH_sBM_cAll_d24_mMH3_ch10
-gMH_sFM_cAll_d22_mMH3_ch04
-gMH_sFM_cAll_d23_mMH3_ch11
-gMH_sFM_cAll_d24_mMH3_ch18
 gPO_sBM_cAll_d10_mPO1_ch01
 gPO_sBM_cAll_d10_mPO1_ch02
 gPO_sBM_cAll_d10_mPO1_ch03
@@ -201,9 +178,6 @@ gPO_sBM_cAll_d11_mPO1_ch07
 gPO_sBM_cAll_d11_mPO1_ch08
 gPO_sBM_cAll_d11_mPO1_ch09
 gPO_sBM_cAll_d11_mPO1_ch10
-gPO_sFM_cAll_d10_mPO1_ch02
-gPO_sFM_cAll_d11_mPO1_ch09
-gPO_sFM_cAll_d12_mPO1_ch16
 gWA_sBM_cAll_d25_mWA0_ch01
 gWA_sBM_cAll_d25_mWA0_ch02
 gWA_sBM_cAll_d25_mWA0_ch03
@@ -224,6 +198,3 @@ gWA_sBM_cAll_d26_mWA0_ch07
 gWA_sBM_cAll_d26_mWA0_ch08
 gWA_sBM_cAll_d26_mWA0_ch09
 gWA_sBM_cAll_d26_mWA0_ch10
-gWA_sFM_cAll_d25_mWA0_ch01
-gWA_sFM_cAll_d26_mWA0_ch08
-gWA_sFM_cAll_d27_mWA0_ch15
