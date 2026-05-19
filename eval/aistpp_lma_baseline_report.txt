@@ -2,86 +2,87 @@
   AIST++ LMA Baseline Similarity Report
 ========================================================================
   Data directory : /Users/zqliu/projects/aist_plusplus_final/motions
-  Total pkl files: 1408  |  skipped: 0
+  Total pkl files: 1408  |  sBM used: 1199  |  sFM excluded: 209
   Unique music IDs        : 60
-  Unique dancer-music seqs: 179
+  Total sBM seqs indexed  : 1199
+  Pairing strategy        : same chunk_id (time-aligned), different dancer_id, sBM only
   Downsample factor       : 2  (raw 60fps → 30fps)
-  Max pairs per group     : 6
+  Max pairs per chunk     : unlimited
 
-  mBR0    n_pairs= 2  total=0.936  body=0.998  effort=0.959  shape=0.974  space=0.773
-  mBR1    n_pairs= 6  total=0.878  body=0.991  effort=0.963  shape=0.928  space=0.534
-  mBR2    n_pairs= 6  total=0.887  body=0.989  effort=0.941  shape=0.931  space=0.612
-  mBR3    n_pairs= 6  total=0.898  body=0.990  effort=0.965  shape=0.927  space=0.632
-  mBR4    n_pairs= 6  total=0.886  body=0.995  effort=0.965  shape=0.963  space=0.524
-  mBR5    n_pairs= 6  total=0.881  body=0.986  effort=0.955  shape=0.918  space=0.578
-  mHO0    n_pairs= 6  total=0.960  body=0.996  effort=0.960  shape=0.967  space=0.901
-  mHO1    n_pairs= 6  total=0.886  body=0.996  effort=0.961  shape=0.951  space=0.543
-  mHO2    n_pairs= 6  total=0.870  body=0.995  effort=0.963  shape=0.931  space=0.485
-  mHO3    n_pairs= 6  total=0.910  body=0.996  effort=0.970  shape=0.901  space=0.701
-  mHO4    n_pairs= 6  total=0.924  body=0.995  effort=0.971  shape=0.921  space=0.752
-  mHO5    n_pairs= 6  total=0.938  body=0.996  effort=0.976  shape=0.934  space=0.799
-  mJB0    n_pairs= 6  total=0.869  body=0.980  effort=0.886  shape=0.741  space=0.804
-  mJB1    n_pairs= 6  total=0.823  body=0.984  effort=0.941  shape=0.722  space=0.506
-  mJB2    n_pairs= 6  total=0.880  body=0.978  effort=0.940  shape=0.906  space=0.619
-  mJB3    n_pairs= 6  total=0.839  body=0.983  effort=0.928  shape=0.827  space=0.500
-  mJB4    n_pairs= 6  total=0.855  body=0.986  effort=0.955  shape=0.864  space=0.498
-  mJB5    n_pairs= 6  total=0.839  body=0.989  effort=0.955  shape=0.855  space=0.422
-  mJS0    n_pairs= 6  total=0.892  body=0.971  effort=0.919  shape=0.810  space=0.816
-  mJS1    n_pairs= 6  total=0.934  body=0.981  effort=0.947  shape=0.782  space=0.993
-  mJS2    n_pairs= 6  total=0.926  body=0.970  effort=0.935  shape=0.770  space=1.000
-  mJS3    n_pairs= 6  total=0.908  body=0.972  effort=0.932  shape=0.831  space=0.851
-  mJS4    n_pairs= 6  total=0.954  body=0.985  effort=0.955  shape=0.887  space=0.974
-  mJS5    n_pairs= 6  total=0.934  body=0.974  effort=0.956  shape=0.775  space=1.000
-  mKR0    n_pairs= 6  total=0.876  body=0.980  effort=0.849  shape=0.853  space=0.783
-  mKR1    n_pairs= 6  total=0.875  body=0.981  effort=0.887  shape=0.836  space=0.734
-  mKR2    n_pairs= 6  total=0.916  body=0.977  effort=0.844  shape=0.906  space=0.942
-  mKR3    n_pairs= 6  total=0.927  body=0.986  effort=0.930  shape=0.905  space=0.854
-  mKR4    n_pairs= 6  total=0.865  body=0.976  effort=0.883  shape=0.803  space=0.735
-  mKR5    n_pairs= 6  total=0.909  body=0.970  effort=0.856  shape=0.818  space=0.986
-  mLH0    n_pairs= 6  total=0.877  body=0.989  effort=0.938  shape=0.799  space=0.697
-  mLH1    n_pairs= 6  total=0.860  body=0.990  effort=0.945  shape=0.886  space=0.513
-  mLH2    n_pairs= 6  total=0.864  body=0.989  effort=0.944  shape=0.905  space=0.517
-  mLH3    n_pairs= 6  total=0.863  body=0.988  effort=0.951  shape=0.791  space=0.614
-  mLH4    n_pairs= 6  total=0.883  body=0.992  effort=0.955  shape=0.889  space=0.605
-  mLH5    n_pairs= 6  total=0.876  body=0.990  effort=0.961  shape=0.879  space=0.574
-  mLO0    n_pairs= 6  total=0.894  body=0.984  effort=0.894  shape=0.859  space=0.796
-  mLO1    n_pairs= 6  total=0.919  body=0.985  effort=0.899  shape=0.856  space=0.911
-  mLO2    n_pairs= 6  total=0.937  body=0.991  effort=0.939  shape=0.788  space=1.000
-  mLO3    n_pairs= 6  total=0.932  body=0.991  effort=0.906  shape=0.816  space=1.000
-  mLO4    n_pairs= 6  total=0.936  body=0.987  effort=0.927  shape=0.810  space=1.000
-  mLO5    n_pairs= 6  total=0.913  body=0.982  effort=0.938  shape=0.810  space=0.876
-  mMH0    n_pairs= 6  total=0.887  body=0.993  effort=0.954  shape=0.863  space=0.650
-  mMH1    n_pairs= 6  total=0.876  body=0.990  effort=0.963  shape=0.816  space=0.636
-  mMH2    n_pairs= 6  total=0.909  body=0.989  effort=0.945  shape=0.840  space=0.803
-  mMH3    n_pairs= 6  total=0.918  body=0.985  effort=0.946  shape=0.822  space=0.874
-  mMH4    n_pairs= 6  total=0.947  body=0.993  effort=0.956  shape=0.842  space=0.968
-  mMH5    n_pairs= 6  total=0.912  body=0.988  effort=0.921  shape=0.855  space=0.844
-  mPO0    n_pairs= 6  total=0.952  body=0.994  effort=0.943  shape=0.903  space=0.953
-  mPO1    n_pairs= 6  total=0.945  body=0.993  effort=0.920  shape=0.912  space=0.944
-  mPO2    n_pairs= 6  total=0.938  body=0.992  effort=0.937  shape=0.816  space=0.979
-  mPO3    n_pairs= 6  total=0.969  body=0.993  effort=0.966  shape=0.906  space=1.000
-  mPO4    n_pairs= 6  total=0.953  body=0.994  effort=0.950  shape=0.921  space=0.926
-  mPO5    n_pairs= 6  total=0.934  body=0.990  effort=0.936  shape=0.864  space=0.915
-  mWA0    n_pairs= 6  total=0.936  body=0.988  effort=0.958  shape=0.828  space=0.935
-  mWA1    n_pairs= 6  total=0.885  body=0.987  effort=0.899  shape=0.805  space=0.788
-  mWA2    n_pairs= 6  total=0.922  body=0.985  effort=0.918  shape=0.885  space=0.869
-  mWA3    n_pairs= 6  total=0.887  body=0.982  effort=0.883  shape=0.773  space=0.863
-  mWA4    n_pairs= 6  total=0.932  body=0.990  effort=0.961  shape=0.880  space=0.854
-  mWA5    n_pairs= 6  total=0.933  body=0.982  effort=0.909  shape=0.829  space=1.000
+  mBR0    n_pairs= 20  total=0.929  body=0.993  effort=0.949  shape=0.932  space=0.802
+  mBR1    n_pairs= 20  total=0.923  body=0.994  effort=0.962  shape=0.939  space=0.740
+  mBR2    n_pairs= 20  total=0.943  body=0.994  effort=0.972  shape=0.935  space=0.833
+  mBR3    n_pairs= 20  total=0.940  body=0.994  effort=0.974  shape=0.946  space=0.804
+  mBR4    n_pairs= 20  total=0.936  body=0.994  effort=0.971  shape=0.954  space=0.779
+  mBR5    n_pairs= 20  total=0.929  body=0.993  effort=0.966  shape=0.936  space=0.771
+  mHO0    n_pairs= 20  total=0.961  body=0.996  effort=0.974  shape=0.951  space=0.897
+  mHO1    n_pairs= 20  total=0.937  body=0.995  effort=0.973  shape=0.936  space=0.797
+  mHO2    n_pairs= 20  total=0.968  body=0.995  effort=0.979  shape=0.919  space=0.963
+  mHO3    n_pairs= 20  total=0.949  body=0.994  effort=0.977  shape=0.886  space=0.901
+  mHO4    n_pairs= 20  total=0.964  body=0.996  effort=0.975  shape=0.930  space=0.934
+  mHO5    n_pairs= 20  total=0.961  body=0.996  effort=0.977  shape=0.929  space=0.915
+  mJB0    n_pairs= 20  total=0.891  body=0.990  effort=0.939  shape=0.927  space=0.632
+  mJB1    n_pairs= 20  total=0.887  body=0.991  effort=0.945  shape=0.944  space=0.587
+  mJB2    n_pairs= 20  total=0.869  body=0.990  effort=0.932  shape=0.912  space=0.548
+  mJB3    n_pairs= 20  total=0.866  body=0.971  effort=0.930  shape=0.904  space=0.575
+  mJB4    n_pairs= 20  total=0.877  body=0.991  effort=0.940  shape=0.908  space=0.578
+  mJB5    n_pairs= 20  total=0.866  body=0.993  effort=0.948  shape=0.929  space=0.487
+  mJS0    n_pairs= 20  total=0.962  body=0.996  effort=0.942  shape=0.972  space=0.931
+  mJS1    n_pairs= 20  total=0.962  body=0.995  effort=0.946  shape=0.971  space=0.927
+  mJS2    n_pairs= 20  total=0.942  body=0.990  effort=0.943  shape=0.921  space=0.891
+  mJS3    n_pairs= 20  total=0.931  body=0.988  effort=0.933  shape=0.905  space=0.867
+  mJS4    n_pairs= 20  total=0.949  body=0.990  effort=0.947  shape=0.912  space=0.926
+  mJS5    n_pairs= 20  total=0.947  body=0.991  effort=0.947  shape=0.917  space=0.910
+  mKR0    n_pairs= 20  total=0.911  body=0.983  effort=0.922  shape=0.785  space=0.911
+  mKR1    n_pairs= 20  total=0.895  body=0.983  effort=0.938  shape=0.815  space=0.778
+  mKR2    n_pairs= 20  total=0.945  body=0.993  effort=0.940  shape=0.918  space=0.909
+  mKR3    n_pairs= 20  total=0.911  body=0.986  effort=0.942  shape=0.872  space=0.790
+  mKR4    n_pairs= 20  total=0.914  body=0.983  effort=0.937  shape=0.818  space=0.872
+  mKR5    n_pairs= 20  total=0.900  body=0.983  effort=0.937  shape=0.842  space=0.779
+  mLH0    n_pairs= 20  total=0.910  body=0.992  effort=0.943  shape=0.852  space=0.794
+  mLH1    n_pairs= 20  total=0.928  body=0.993  effort=0.953  shape=0.910  space=0.813
+  mLH2    n_pairs= 20  total=0.941  body=0.994  effort=0.960  shape=0.924  space=0.848
+  mLH3    n_pairs= 20  total=0.940  body=0.993  effort=0.956  shape=0.910  space=0.864
+  mLH4    n_pairs= 20  total=0.936  body=0.991  effort=0.953  shape=0.860  space=0.903
+  mLH5    n_pairs= 20  total=0.932  body=0.991  effort=0.958  shape=0.860  space=0.874
+  mLO0    n_pairs= 20  total=0.946  body=0.992  effort=0.943  shape=0.893  space=0.934
+  mLO1    n_pairs= 20  total=0.938  body=0.993  effort=0.936  shape=0.887  space=0.911
+  mLO2    n_pairs= 20  total=0.958  body=0.998  effort=0.961  shape=0.904  space=0.947
+  mLO3    n_pairs= 20  total=0.956  body=0.998  effort=0.959  shape=0.930  space=0.917
+  mLO4    n_pairs= 20  total=0.950  body=0.994  effort=0.940  shape=0.896  space=0.952
+  mLO5    n_pairs= 20  total=0.950  body=0.994  effort=0.949  shape=0.919  space=0.916
+  mMH0    n_pairs= 20  total=0.937  body=0.995  effort=0.967  shape=0.922  space=0.822
+  mMH1    n_pairs= 20  total=0.931  body=0.994  effort=0.961  shape=0.901  space=0.821
+  mMH2    n_pairs= 20  total=0.947  body=0.994  effort=0.962  shape=0.915  space=0.886
+  mMH3    n_pairs= 20  total=0.935  body=0.994  effort=0.967  shape=0.873  space=0.860
+  mMH4    n_pairs= 20  total=0.949  body=0.995  effort=0.970  shape=0.915  space=0.883
+  mMH5    n_pairs= 20  total=0.920  body=0.991  effort=0.957  shape=0.893  space=0.787
+  mPO0    n_pairs= 20  total=0.932  body=0.996  effort=0.942  shape=0.881  space=0.874
+  mPO1    n_pairs= 20  total=0.931  body=0.996  effort=0.944  shape=0.857  space=0.891
+  mPO2    n_pairs= 20  total=0.949  body=0.996  effort=0.944  shape=0.901  space=0.935
+  mPO3    n_pairs= 20  total=0.951  body=0.996  effort=0.953  shape=0.899  space=0.931
+  mPO4    n_pairs= 20  total=0.942  body=0.996  effort=0.961  shape=0.821  space=0.953
+  mPO5    n_pairs= 20  total=0.949  body=0.994  effort=0.967  shape=0.873  space=0.933
+  mWA0    n_pairs= 20  total=0.922  body=0.988  effort=0.947  shape=0.813  space=0.895
+  mWA1    n_pairs= 18  total=0.904  body=0.988  effort=0.942  shape=0.814  space=0.812
+  mWA2    n_pairs= 20  total=0.923  body=0.989  effort=0.929  shape=0.866  space=0.874
+  mWA3    n_pairs= 20  total=0.914  body=0.991  effort=0.941  shape=0.860  space=0.811
+  mWA4    n_pairs= 20  total=0.918  body=0.991  effort=0.950  shape=0.876  space=0.802
+  mWA5    n_pairs= 20  total=0.914  body=0.991  effort=0.943  shape=0.873  space=0.795
 
 ========================================================================
   AGGREGATE STATISTICS
 ========================================================================
   Component     Mean     Std     Min      Q1   Median      Q3     Max
   ------------------------------------------------------------------
-  body         0.987   0.010   0.955   0.983    0.988   0.993   0.999
-  effort       0.935   0.039   0.777   0.917    0.945   0.961   0.986
-  shape        0.859   0.084   0.592   0.808    0.868   0.922   0.993
-  space        0.779   0.205   0.228   0.617    0.823   0.972   1.000
-  total        0.904   0.046   0.771   0.865    0.906   0.940   0.993
+  body         0.992   0.011   0.795   0.990    0.994   0.997   1.000
+  effort       0.952   0.027   0.811   0.937    0.960   0.972   0.986
+  shape        0.898   0.088   0.505   0.863    0.920   0.960   0.999
+  space        0.838   0.183   0.213   0.727    0.904   1.000   1.000
+  total        0.930   0.043   0.685   0.903    0.938   0.966   0.993
 
-  Total pairs scored : 356
-  Processing time    : 34.6s  (0.10s per pair)
+  Total pairs scored : 1198
+  Processing time    : 105.3s  (0.09s per pair)
 
   Interpretation guide:
     Score = (mean Pearson r + 1) / 2  mapped to [0, 1]
@@ -89,8 +90,8 @@
     >0.5 = positively correlated (more similar)
     <0.5 = negatively correlated (mirror/opposite movement)
 
-  These scores represent real AIST++ dancers performing
-  the same song independently — NOT reacting to each other.
-  Use them as the reference ceiling for the duet diffusion model.
+  Pairing: same 5-second chunk, different dancers performing
+  the same BGM independently — NOT reacting to each other.
+  Use these scores as the reference ceiling for the duet model.
 
 ========================================================================

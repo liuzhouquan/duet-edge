@@ -216,11 +216,15 @@ def build_model(device):
         activation=F.gelu,
     )
     smpl = SMPLSkeleton(device)
+    # guidance_weight=0: use only the unconditioned path (pretrained null_cond_embed).
+    # With weight=2, CFG amplifies the randomly-initialized cond_projection output and
+    # subtracts the good unconditioned signal — producing systematically inverted poses.
+    # weight=0 lets the pretrained backbone generate valid motion without conditioning.
     diffusion = GaussianDiffusion(
         model, HORIZON, REPR_DIM, smpl,
         schedule="cosine", n_timestep=1000,
         predict_epsilon=False, loss_type="l2",
-        use_p2=False, cond_drop_prob=0.25, guidance_weight=2,
+        use_p2=False, cond_drop_prob=0.25, guidance_weight=0,
     )
     return diffusion
 

@@ -272,80 +272,87 @@ def preprocess_motion_to_tensor(pos_np, q_np, normalizer, data_stride=2):
 class DuetDataset(AISTPPDataset):
     """在 AISTPPDataset 基础上支持"主舞+伴舞"配对。
 
-    核心思路
+    配对逻辑
     --------
-    AIST++ 里同一个 music_id（如 mBR1）的序列使用相同的 BGM，但由不同
-    dancer（如 d04、d05）独立录制。我们把同 music_id、不同 dancer 的序列
-    视为一组，每次 __getitem__ 随机从组内选一条作为主舞，当前序列作为伴舞。
+    从 data/splits/duet_pairs_{train|test}.json 加载显式配对，每条记录为
+    {"lead": "gBR_sBM_cAll_d04_mBR0_ch01", "follower": "gBR_sBM_cAll_d05_mBR0_ch01"}。
+    配对 key 为 (music_id, ch_id)：同一首曲子、同一套编舞、不同舞者。
+    切片后按 slice 编号对齐：lead 的 slice3 配 follower 的 slice3。
 
     返回格式
     --------
     (follower_pose, cond, filename, wavname)
-      follower_pose : [150, 151]   — 伴舞动作（训练目标）
-      cond          : [150, 4951]  — cat([主舞动作(151), 音乐特征(4800)], dim=-1)
+      follower_pose : [T, 151]    — 伴舞动作（训练目标）
+      cond          : [T, 4951]   — cat([主舞动作(151), 音乐特征(4800)], dim=-1)
       filename      : 伴舞对应的特征文件路径（字符串）
       wavname       : 伴舞对应的音频文件路径（字符串）
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._build_music_groups()
+        self._build_pairs()
 
-    def _build_music_groups(self):
-        """按 (music_id, dancer_id) 把序列分组，为每条序列记录可用的主舞候选。
+    def _build_pairs(self):
+        """从 pairs JSON 构建 (lead_idx, follower_idx) 列表。
 
-        只选"同 music_id、不同 dancer_id"的序列作为主舞，
-        保证主舞和伴舞来自不同的人。
+        按 slice 编号精确对齐：lead 的 _sliceN 只配 follower 的 _sliceN。
         """
-        from collections import defaultdict
+        import json
 
-        # 第一遍：按 music_id 聚合，记录 (数据索引, dancer_id)
-        groups = defaultdict(list)  # music_id -> [(idx, dancer_id), ...]
+        split_name = "train" if self.train else "test"
+        pairs_json = os.path.join(
+            self.data_path, "splits", f"duet_pairs_{split_name}.json"
+        )
+        pairs = json.loads(open(pairs_json).read())
+
+        # base_name → {slice_idx: dataset_idx}
+        # 从 feature 文件路径中解析：.../gBR_sBM_cAll_d04_mBR0_ch01_slice3.npy
+        base_to_slices = {}
         for idx, filename in enumerate(self.data["filenames"]):
-            music_id, dancer_id = _parse_filename_parts(filename)
-            groups[music_id].append((idx, dancer_id))
+            stem = os.path.splitext(os.path.basename(filename))[0]
+            marker = "_slice"
+            pos = stem.rfind(marker)
+            if pos == -1:
+                continue
+            base_name = stem[:pos]
+            slice_idx = int(stem[pos + len(marker):])
+            if base_name not in base_to_slices:
+                base_to_slices[base_name] = {}
+            base_to_slices[base_name][slice_idx] = idx
 
-        # 第二遍：为每个序列找出"不同 dancer"的候选主舞索引列表
-        # idx -> [lead_idx, ...]（同 music_id、不同 dancer_id 的所有序列）
-        self.idx_to_leads = {}
-        for music_id, entries in groups.items():
-            for (idx, dancer_id) in entries:
-                leads = [i for (i, d) in entries if d != dancer_id]
-                if leads:
-                    self.idx_to_leads[idx] = leads
+        self.valid_pairs = []
+        skipped = 0
+        for pair in pairs:
+            lead_slices     = base_to_slices.get(pair["lead"],     {})
+            follower_slices = base_to_slices.get(pair["follower"], {})
+            if not lead_slices or not follower_slices:
+                skipped += 1
+                continue
+            for si in sorted(set(lead_slices) & set(follower_slices)):
+                self.valid_pairs.append((lead_slices[si], follower_slices[si]))
 
-        # 只保留有合法主舞候选的序列（理论上 AIST++ 每组 ≥2 个 dancer，全部有效）
-        self.valid_indices = sorted(self.idx_to_leads.keys())
-        self.length = len(self.valid_indices)
-
+        self.length = len(self.valid_pairs)
         print(
-            f"DuetDataset: {self.length} valid follower sequences "
-            f"across {len(set(groups.keys()))} music groups"
+            f"DuetDataset ({'train' if self.train else 'test'}): "
+            f"{self.length} paired slices "
+            f"({len(pairs) - skipped}/{len(pairs)} pairs matched"
+            f"{f', {skipped} skipped' if skipped else ''})"
         )
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, idx):
-        # 把压缩后的 idx 映射回原始数据索引
-        follower_idx = self.valid_indices[idx]
+        lead_idx, follower_idx = self.valid_pairs[idx]
 
-        # 从同 music_id、不同 dancer 里随机选一条作为主舞
-        lead_idx = random.choice(self.idx_to_leads[follower_idx])
+        follower_pose = self.data["pose"][follower_idx]  # [T, 151]
+        lead_pose     = self.data["pose"][lead_idx]      # [T, 151]
 
-        # 伴舞动作（已归一化）
-        follower_pose = self.data["pose"][follower_idx]  # [150, 151]
-        # 主舞动作（同一归一化器，格式完全相同）
-        lead_pose = self.data["pose"][lead_idx]          # [150, 151]
-
-        # 伴舞对应的音乐特征（同 music_id 下音乐特征相同，用伴舞侧文件即可）
         music_feat = torch.from_numpy(
             np.load(self.data["filenames"][follower_idx])
-        )  # [150, feature_dim]，jukebox=4800 或 baseline=35
+        )  # [T, feature_dim]
 
-        # 拼接主舞动作 + 音乐特征作为条件向量
-        # 模型 cond_feature_dim 需设为 feature_dim + 151
-        cond = torch.cat([lead_pose, music_feat], dim=-1)  # [150, 4951 or 186]
+        cond = torch.cat([lead_pose, music_feat], dim=-1)  # [T, 4951 or 186]
 
         return (
             follower_pose,

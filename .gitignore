@@ -28,4 +28,4 @@ __pycache__/
 .ipynb_checkpoints/
 prompt.txt
 
-# ── 注意：data/*.py、data/splits/*.txt、dataset/*.py 都进 git ──────────────
+# ── 注意：data/*.py、data/splits/*.json、dataset/*.py 都进 git ──────────────

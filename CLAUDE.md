@@ -46,10 +46,10 @@ python test.py --music_dir custom_music/
 The only difference is `cond_feature_dim`: 4800 (single) vs 4951 (duet).
 Loading a solo checkpoint in duet mode will fail with a shape mismatch on `cond_projection`.
 
-**Prepare data (3-way split: train/val/test, music_id-level, no leakage):**
+**Prepare data (train/test split + explicit lead-follower pairs):**
 ```bash
 cd data
-python create_duet_splits.py        # generates data/splits/duet_{train,val,test}.txt
+python create_duet_pairs.py         # generates data/splits/duet_pairs_{train,test}.json
 python create_dataset.py --dataset_folder edge_aistpp --duet --extract-jukebox
 cd ..
 ```
