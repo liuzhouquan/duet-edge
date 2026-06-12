@@ -64,26 +64,47 @@ The AIST++ data and the trained duet checkpoint (`train-1800.pt`) are **not** in
 **📦 https://uoa-my.sharepoint.com/:f:/g/personal/zliu753_uoa_auckland_ac_nz/IgBJ0-qFIogFSKnizuJcgx0TAXsfBZE_gOzsF3_foWKCq7g?e=87sQGi**
 
 After downloading:
+- The AIST++ folder contains **raw data** (motion + wav only — *not* preprocessed). Place it under `data/` per the layout above, then run the preprocessing in §4 (`create_duet_pairs.py` + `create_dataset.py --extract-jukebox`) to produce the sliced motions and Jukebox features before training or evaluation. This step needs `jukemirlib` (see §3) and can take many hours.
 - Place the trained duet checkpoint at `runs/train/exp9/weights/train-1800.pt` (or anywhere, and pass its path via `--checkpoint`).
-- Place the AIST++ data under `data/` following the split layout above.
 - Separately, the original EDGE solo checkpoint (`checkpoint.pt`, used for fine-tuning) can be fetched with `bash download_model.sh`.
 
 ---
 
 ## 3. Environment setup
 
+Target platform: Linux x86_64 with an NVIDIA GPU (≥ 16 GB), CUDA 11.8.
+
+**Recommended — one step:**
+
 ```bash
-conda env create -f environment-linux.yml
+bash setup_env.sh        # creates the `edge` conda env and installs everything below
 conda activate edge
-
-# pytorch3d must be installed separately:
-pip install pytorch3d \
-  --extra-index-url https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
-
-accelerate config        # configure fp16 / single-GPU
 ```
 
-Target platform: Linux x86_64 with an NVIDIA GPU (≥ 16 GB). Jukebox feature extraction is the heaviest step and benefits from a recent GPU.
+**Or manually** (these are the steps `setup_env.sh` automates — the order matters):
+
+```bash
+# 1. conda packages (the yml's pip section is skipped on purpose)
+conda env create -f environment-linux.yml || true
+conda activate edge
+
+# 2. downgrade setuptools FIRST — jukebox's setup.py needs pkg_resources,
+#    which setuptools >= 70 removed
+pip install "setuptools<70"
+
+# 3. pip deps incl. jukemirlib (GitHub-only; provides the Jukebox music features)
+pip install einops librosa soundfile p_tqdm wandb "accelerate>=0.24,<1.0" \
+    "git+https://github.com/rodrigo-castellon/jukemirlib.git" --no-build-isolation
+
+# 4. pytorch3d — must use --find-links (--extra-index-url silently finds nothing here)
+pip install pytorch3d \
+    --find-links https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
+
+# 5. configure accelerate (single GPU, fp16)
+accelerate config
+```
+
+> **`jukemirlib` is required, not optional.** Jukebox features are the model's music input, used by both training and inference — skipping it fails at feature extraction. Jukebox feature extraction is also the heaviest step and benefits from a recent GPU.
 
 ---
 
