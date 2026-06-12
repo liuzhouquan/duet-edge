@@ -1,12 +1,15 @@
 name: edge
 # Linux x86_64 + NVIDIA GPU (CUDA 11.8), Slurm HPC environment
 #
-# Create:  conda env create -f environment-linux.yml
-# Activate: conda activate edge
+# !! DO NOT use `conda env create` alone — pip deps require extra steps.
+# !! Use the setup script instead:
 #
-# After activation, install pytorch3d manually:
-#   pip install pytorch3d \
-#     --extra-index-url https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
+#   bash setup_env.sh
+#
+# The script handles three known issues (see setup_env.sh for details):
+#   1. jukemirlib is not on PyPI — installed from GitHub
+#   2. setuptools >=70 breaks jukebox build (no pkg_resources) — pinned to <70
+#   3. pytorch3d wheel requires --find-links, not --extra-index-url
 channels:
   - pytorch
   - nvidia
@@ -25,12 +28,14 @@ dependencies:
   - tqdm
   - conda-forge::fvcore
   - conda-forge::iopath
+  # pip deps below are NOT installed by conda env create (see header).
+  # They are installed by setup_env.sh instead.
   - pip:
       - einops
-      - librosa
+      - "librosa>=0.10"  # 0.9.x uses scipy.signal.hann removed in scipy 1.9+
       - soundfile
       - p_tqdm
       - wandb
       - "accelerate>=0.24,<1.0"
-      - jukemirlib
-      # pytorch3d: install manually after env creation (see header above)
+      # jukemirlib: not on PyPI, installed from GitHub by setup_env.sh
+      # pytorch3d: installed from fbaipublicfiles wheel by setup_env.sh

@@ -18,6 +18,8 @@ from model.adan import Adan
 from model.diffusion import GaussianDiffusion
 from model.model import DanceDecoder
 from vis import SMPLSkeleton
+from eval.lma_similarity import compute_similarity
+from dataset.quaternion import ax_from_6v
 
 
 def wrap(x):
@@ -38,6 +40,8 @@ class EDGE:
         learning_rate=4e-4,
         weight_decay=0.02,
         duet=False,
+        guidance_weight_music=2,
+        guidance_weight_lead=None,
     ):
         ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
         self.accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
@@ -88,6 +92,7 @@ class EDGE:
             dropout=0.1,
             cond_feature_dim=feature_dim,
             activation=F.gelu,
+            lead_dim=repr_dim if duet else 0,
         )
 
         smpl = SMPLSkeleton(self.accelerator.device)
@@ -102,7 +107,8 @@ class EDGE:
             loss_type="l2",
             use_p2=False,
             cond_drop_prob=0.25,
-            guidance_weight=2,
+            guidance_weight=guidance_weight_music,
+            guidance_weight_lead=guidance_weight_lead,
         )
 
         print(
@@ -143,10 +149,10 @@ class EDGE:
         # 根据模式选择数据集类和缓存文件名，两套互不干扰
         if self.duet:
             DatasetClass = DuetDataset
-            cache_prefix = "duet"
+            cache_prefix = f"duet_{opt.feature_type}"
         else:
             DatasetClass = AISTPPDataset
-            cache_prefix = "solo"
+            cache_prefix = f"solo_{opt.feature_type}"
 
         train_tensor_dataset_path = os.path.join(
             opt.processed_data_dir, f"{cache_prefix}_train_tensor_dataset.pkl"
@@ -166,12 +172,14 @@ class EDGE:
                 data_path=opt.data_path,
                 backup_path=opt.processed_data_dir,
                 train=True,
+                feature_type=opt.feature_type,
                 force_reload=opt.force_reload,
             )
             test_dataset = DatasetClass(
                 data_path=opt.data_path,
                 backup_path=opt.processed_data_dir,
                 train=False,
+                feature_type=opt.feature_type,
                 normalizer=train_dataset.normalizer,
                 force_reload=opt.force_reload,
             )
@@ -183,14 +191,13 @@ class EDGE:
         self.normalizer = test_dataset.normalizer
 
         # data loaders
-        # decide number of workers based on cpu count
-        num_cpus = multiprocessing.cpu_count()
+        # jukebox features are 2.75 MB/file; cap workers to avoid I/O contention
         pin = torch.cuda.is_available()
         train_data_loader = DataLoader(
             train_dataset,
             batch_size=opt.batch_size,
             shuffle=True,
-            num_workers=min(int(num_cpus * 0.75), 32),
+            num_workers=0,
             pin_memory=pin,
             drop_last=True,
         )
@@ -198,7 +205,7 @@ class EDGE:
             test_dataset,
             batch_size=opt.batch_size,
             shuffle=True,
-            num_workers=2,
+            num_workers=0,
             pin_memory=pin,
             drop_last=True,
         )
@@ -229,14 +236,29 @@ class EDGE:
             for step, (x, cond, filename, wavnames) in enumerate(
                 load_loop(train_data_loader)
             ):
-                # Music dropout: randomly zero the music portion of the duet
-                # conditioning so the model learns to generate from lead motion
-                # alone (enables --no_music at inference time).
-                if self.duet and opt.music_drop_prob > 0:
-                    mask = (torch.rand(cond.shape[0], 1, 1, device=cond.device)
-                            > opt.music_drop_prob)
+                # Independent conditioning dropout for duet mode.
+                # Randomly zero each portion of the cond vector separately so
+                # the model learns all four conditioning regimes:
+                #   (music, lead), (music, ∅), (∅, lead), (∅, ∅)
+                # The full-null (∅, ∅) case is also covered by GaussianDiffusion's
+                # cond_drop_prob=0.25 (which replaces the projected cond with a
+                # learned null embedding).  The input-level zeros here train the
+                # model to handle partial conditioning at inference time.
+                if self.duet:
                     cond = cond.clone()
-                    cond[:, :, self.repr_dim:] *= mask
+                    B = cond.shape[0]
+                    if opt.drop_prob_lead > 0:
+                        mask_lead = (torch.rand(B, 1, 1, device=cond.device)
+                                     < opt.drop_prob_lead)
+                        cond[:, :, :self.repr_dim] = cond[:, :, :self.repr_dim].masked_fill(
+                            mask_lead, 0.0
+                        )
+                    if opt.drop_prob_music > 0:
+                        mask_music = (torch.rand(B, 1, 1, device=cond.device)
+                                      < opt.drop_prob_music)
+                        cond[:, :, self.repr_dim:] = cond[:, :, self.repr_dim:].masked_fill(
+                            mask_music, 0.0
+                        )
 
                 total_loss, (loss, v_loss, fk_loss, foot_loss) = self.diffusion(
                     x, cond, t_override=None
@@ -263,6 +285,15 @@ class EDGE:
                 # save only if on main thread
                 if self.accelerator.is_main_process:
                     self.eval()
+                    # compute val loss
+                    val_loss = 0
+                    with torch.no_grad():
+                        for val_step, (xv, condv, _, _) in enumerate(test_data_loader):
+                            xv = xv.to(self.accelerator.device)
+                            condv = condv.to(self.accelerator.device)
+                            _, (lv, _, _, _) = self.diffusion(xv, condv, t_override=None)
+                            val_loss += lv.detach().cpu().numpy()
+                    val_loss /= len(test_data_loader)
                     # log
                     avg_loss /= len(train_data_loader)
                     avg_vloss /= len(train_data_loader)
@@ -270,10 +301,15 @@ class EDGE:
                     avg_footloss /= len(train_data_loader)
                     log_dict = {
                         "Train Loss": avg_loss,
+                        "Val Loss": val_loss,
                         "V Loss": avg_vloss,
                         "FK Loss": avg_fkloss,
                         "Foot Loss": avg_footloss,
                     }
+                    print(
+                        f"[Epoch {epoch}] train={avg_loss:.4f}  val={val_loss:.4f}"
+                        f"  v={avg_vloss:.4f}  fk={avg_fkloss:.4f}  foot={avg_footloss:.4f}"
+                    )
                     wandb.log(log_dict)
                     ckpt = {
                         "epoch": epoch,   # saved so training can resume from here
@@ -303,6 +339,16 @@ class EDGE:
                         duet=self.duet,
                         repr_dim=self.repr_dim,
                     )
+
+                    # ── LMA 评估（仅 duet 模式）────────────────────────────
+                    if self.duet:
+                        lma_score = self._eval_lma(test_data_loader, n_pairs=10)
+                        print(f"[Epoch {epoch}] LMA total={lma_score:.4f}  "
+                              f"(random≈0.500, real-pair≈0.930)")
+                        log_dict["LMA"] = lma_score
+                        wandb.log(log_dict)
+                    # ──────────────────────────────────────────────────────
+
                     print(f"[MODEL SAVED at Epoch {epoch}]")
                     self.train()
 
@@ -324,6 +370,39 @@ class EDGE:
 
         if self.accelerator.is_main_process:
             wandb.run.finish()
+
+    @torch.no_grad()
+    def _eval_lma(self, test_loader, n_pairs: int = 10) -> float:
+        """推理 n_pairs 对测试样本，计算 LMA 主舞-伴舞相似度均值。"""
+        scores = []
+        smpl = self.diffusion.smpl
+        for i, (x, cond, _, _) in enumerate(test_loader):
+            if i >= n_pairs:
+                break
+            cond = cond[:1].to(self.accelerator.device)  # 每次取 1 对
+            shape = (1, self.horizon, self.repr_dim)
+
+            # 生成伴舞
+            dev = self.accelerator.device
+            samples = self.diffusion.ddim_sample(shape, cond).detach().cpu()
+            samples = self.normalizer.unnormalize(samples)
+            _, samples = torch.split(samples, (4, self.repr_dim - 4), dim=2)
+            pos_f = samples[:, :, :3].to(dev)
+            q_f   = ax_from_6v(samples[:, :, 3:].reshape(1, self.horizon, 24, 6).to(dev))
+            follower_joints = smpl.forward(q_f, pos_f)[0].detach().cpu().numpy()
+
+            # 从 cond 提取主舞关节位置
+            lead_raw = cond[:, :, :self.repr_dim]           # [1, T, 151]
+            lead_raw = self.normalizer.unnormalize(lead_raw.cpu())
+            _, lead_pose = torch.split(lead_raw, (4, self.repr_dim - 4), dim=2)
+            pos_l = lead_pose[:, :, :3].to(dev)
+            q_l   = ax_from_6v(lead_pose[:, :, 3:].reshape(1, self.horizon, 24, 6).to(dev))
+            lead_joints = smpl.forward(q_l, pos_l)[0].detach().cpu().numpy()
+
+            result = compute_similarity(lead_joints, follower_joints)
+            scores.append(result["total_score"])
+
+        return float(sum(scores) / len(scores)) if scores else 0.0
 
     def render_sample(
         self, data_tuple, label, render_dir, render_count=-1, fk_out=None, render=True

@@ -135,7 +135,13 @@ def test(opt):
             all_cond.append(cond_list)
             all_filenames.append(file_list[rand_idx : rand_idx + sample_size])
 
-    model = EDGE(opt.feature_type, opt.checkpoint, duet=opt.duet)
+    model = EDGE(
+        opt.feature_type,
+        opt.checkpoint,
+        duet=opt.duet,
+        guidance_weight_music=opt.guidance_music,
+        guidance_weight_lead=opt.guidance_lead if opt.duet else None,
+    )
     model.eval()
 
     # directory for optionally saving the dances for eval
@@ -150,21 +156,22 @@ def test(opt):
         if lead_motion_chunks is not None:
             # 双人舞模式：cond = cat([主舞动作(151), 音乐特征], dim=-1)
             # → [N_chunks, 150, 151 + music_feature_dim]
-            # 与训练时 DuetDataset.__getitem__ 拼接顺序完全一致
-            if opt.no_music:
-                # 无音乐模式：音乐特征置零，模型仅凭主舞动作生成伴舞
-                # 需要训练时用过 --music_drop_prob > 0，否则生成质量较差
-                music_zeros = torch.zeros_like(music_cond)
-                cond = torch.cat(
-                    [lead_motion_chunks.to(music_zeros.dtype), music_zeros], dim=-1
-                )
-            else:
-                cond = torch.cat(
-                    [lead_motion_chunks.to(music_cond.dtype), music_cond], dim=-1
-                )
+            # guidance_music / guidance_lead 控制各路条件的权重，
+            # guided_forward 内部会按需将对应部分置零，无需在此手动清零。
+            cond = torch.cat(
+                [lead_motion_chunks.to(music_cond.dtype), music_cond], dim=-1
+            )
         else:
-            # 单人模式（兼容原始 checkpoint）
-            cond = music_cond
+            # 无主舞动作：lead 部分填零，guided_forward 的 (music, ∅) 路径生效
+            if opt.duet:
+                lead_zeros = torch.zeros(
+                    music_cond.shape[0], music_cond.shape[1], 151,
+                    dtype=music_cond.dtype,
+                )
+                cond = torch.cat([lead_zeros, music_cond], dim=-1)
+            else:
+                # 单人模式（兼容原始 checkpoint）
+                cond = music_cond
 
         data_tuple = None, cond, all_filenames[i]
         model.render_sample(

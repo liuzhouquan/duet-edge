@@ -53,6 +53,7 @@ class GaussianDiffusion(nn.Module):
         clip_denoised=True,
         predict_epsilon=True,
         guidance_weight=3,
+        guidance_weight_lead=None,
         use_p2=False,
         cond_drop_prob=0.2,
     ):
@@ -84,6 +85,9 @@ class GaussianDiffusion(nn.Module):
         self.register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
 
         self.guidance_weight = guidance_weight
+        # guidance_weight_lead: None means solo mode (single guidance weight).
+        # Set to a float to enable duet multi-conditional CFG.
+        self.guidance_weight_lead = guidance_weight_lead
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
         self.register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
@@ -154,11 +158,12 @@ class GaussianDiffusion(nn.Module):
             extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
         )
     
-    def model_predictions(self, x, cond, t, weight=None, clip_x_start = False):
-        weight = weight if weight is not None else self.guidance_weight
-        model_output = self.model.guided_forward(x, cond, t, weight)
-        maybe_clip = partial(torch.clamp, min = -1., max = 1.) if clip_x_start else identity
-        
+    def model_predictions(self, x, cond, t, weight=None, weight_lead=None, clip_x_start=False):
+        w_music = weight if weight is not None else self.guidance_weight
+        w_lead  = weight_lead if weight_lead is not None else self.guidance_weight_lead
+        model_output = self.model.guided_forward(x, cond, t, w_music, w_lead)
+        maybe_clip = partial(torch.clamp, min=-1., max=1.) if clip_x_start else identity
+
         x_start = model_output
         x_start = maybe_clip(x_start)
         pred_noise = self.predict_noise_from_start(x, t, x_start)
@@ -179,14 +184,15 @@ class GaussianDiffusion(nn.Module):
     def p_mean_variance(self, x, cond, t):
         # guidance clipping
         if t[0] > 1.0 * self.n_timestep:
-            weight = min(self.guidance_weight, 0)
+            w_music = min(self.guidance_weight, 0)
         elif t[0] < 0.1 * self.n_timestep:
-            weight = min(self.guidance_weight, 1)
+            w_music = min(self.guidance_weight, 1)
         else:
-            weight = self.guidance_weight
+            w_music = self.guidance_weight
+        w_lead = self.guidance_weight_lead
 
         x_recon = self.predict_start_from_noise(
-            x, t=t, noise=self.model.guided_forward(x, cond, t, weight)
+            x, t=t, noise=self.model.guided_forward(x, cond, t, w_music, w_lead)
         )
 
         if self.clip_denoised:
@@ -262,7 +268,9 @@ class GaussianDiffusion(nn.Module):
 
         for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-            pred_noise, x_start, *_ = self.model_predictions(x, cond, time_cond, clip_x_start = self.clip_denoised)
+            pred_noise, x_start, *_ = self.model_predictions(
+                x, cond, time_cond, clip_x_start=self.clip_denoised
+            )
 
             if time_next < 0:
                 x = x_start
@@ -290,21 +298,30 @@ class GaussianDiffusion(nn.Module):
 
         times = torch.linspace(-1, total_timesteps - 1, steps=sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
         times = list(reversed(times.int().tolist()))
-        weights = np.clip(np.linspace(0, self.guidance_weight * 2, sampling_timesteps), None, self.guidance_weight)
-        time_pairs = list(zip(times[:-1], times[1:], weights)) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+        # Scale factor ramps from 0 → 1 across denoising steps (clamped at 1).
+        # Multiply each guidance weight by this factor so both conditions are
+        # blended proportionally in the chunk-overlap stitching region.
+        scale_factors = np.clip(np.linspace(0, 2.0, sampling_timesteps), None, 1.0)
+        time_pairs = list(zip(times[:-1], times[1:], scale_factors))
 
         x = torch.randn(shape, device = device)
         cond = cond.to(device)
-        
+
         assert batch > 1
         assert x.shape[1] % 2 == 0
         half = x.shape[1] // 2
 
         x_start = None
 
-        for time, time_next, weight in tqdm(time_pairs, desc = 'sampling loop time step'):
+        for time, time_next, scale in tqdm(time_pairs, desc = 'sampling loop time step'):
             time_cond = torch.full((batch,), time, device=device, dtype=torch.long)
-            pred_noise, x_start, *_ = self.model_predictions(x, cond, time_cond, weight=weight, clip_x_start = self.clip_denoised) 
+            pred_noise, x_start, *_ = self.model_predictions(
+                x, cond, time_cond,
+                weight=self.guidance_weight * scale,
+                weight_lead=(self.guidance_weight_lead * scale
+                             if self.guidance_weight_lead is not None else None),
+                clip_x_start=self.clip_denoised,
+            )
 
             if time_next < 0:
                 x = x_start
@@ -620,16 +637,45 @@ class GaussianDiffusion(nn.Module):
             assert s % 2 == 0
             half = s // 2
             if b > 1:
-                # if long mode, stitch position using linear interp
+                # ---- Long-mode stitching (Plan A: post-processing improvements) ----
+                # Two changes vs. the original linear/linspace cross-fade:
+                #
+                # (1) Root-position drift correction. The diffusion-level sync
+                #     `x[1:, :half] = x[:-1, half:]` guarantees that adjacent
+                #     chunks AGREE on the overlap latent at each denoising step
+                #     EXCEPT the final clean step (which is skipped because of
+                #     `if time_next < 0: continue`). After unnormalize + clip,
+                #     small per-chunk pos offsets remain — and a linear cross-
+                #     fade between two slightly displaced trajectories produces
+                #     a visible "wobble" at the start of every overlap window.
+                #     We snap chunk i's first frame onto chunk (i-1)'s frame at
+                #     index `half` (= the very start of the overlap region),
+                #     propagating offsets so the whole sequence stays in
+                #     chunk 0's reference frame. No frame matching at the END
+                #     of the overlap, but the cross-fade weight there is 1.0
+                #     for chunk i anyway, so divergence there is dominated by
+                #     chunk i's own (corrected) trajectory.
+                #
+                # (2) Raised-cosine ramp instead of linspace. The linear ramp
+                #     has a constant non-zero derivative, so the blend speed
+                #     is uniform across the overlap and the SECOND derivative
+                #     is discontinuous at both ends. A raised cosine
+                #     `0.5*(1 - cos(πt))` has zero derivative at t=0 and t=1
+                #     and matches the un-blended region smoothly. Used as the
+                #     same `ramp` for pos cross-fade and for q slerp weights.
+
+                for i in range(1, b):
+                    offset = pos[i - 1, half] - pos[i, 0]  # [3]
+                    pos[i] = pos[i] + offset
+
+                ramp = 0.5 * (1.0 - torch.cos(
+                    torch.linspace(0, float(np.pi), half)
+                )).to(pos.device)
 
                 fade_out = torch.ones((1, s, 1)).to(pos.device)
                 fade_in = torch.ones((1, s, 1)).to(pos.device)
-                fade_out[:, half:, :] = torch.linspace(1, 0, half)[None, :, None].to(
-                    pos.device
-                )
-                fade_in[:, :half, :] = torch.linspace(0, 1, half)[None, :, None].to(
-                    pos.device
-                )
+                fade_out[:, half:, :] = (1.0 - ramp)[None, :, None]
+                fade_in[:, :half, :] = ramp[None, :, None]
 
                 pos[:-1] *= fade_out
                 pos[1:] *= fade_in
@@ -640,8 +686,8 @@ class GaussianDiffusion(nn.Module):
                     full_pos[idx : idx + s] += pos_slice
                     idx += half
 
-                # stitch joint angles with slerp
-                slerp_weight = torch.linspace(0, 1, half)[None, :, None].to(pos.device)
+                # stitch joint angles with slerp using the same raised-cosine weight
+                slerp_weight = ramp[None, :, None]
 
                 left, right = q[:-1, half:], q[1:, :half]
                 # convert to quat

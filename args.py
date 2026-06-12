@@ -51,11 +51,17 @@ def parse_train_opt():
         help="双人舞模式：输入=主舞动作+音乐，输出=伴舞动作（需配合 DuetDataset 训练的 checkpoint）",
     )
     parser.add_argument(
-        "--music_drop_prob", type=float, default=0.1,
+        "--drop_prob_music", type=float, default=0.15,
         help=(
-            "仅双人模式有效。训练时随机将音乐特征置零的概率，"
-            "使模型学会仅凭主舞动作生成伴舞（支持无音乐推理）。"
-            "0 = 不丢弃；建议值 0.1~0.2。"
+            "仅双人模式有效。训练时随机将音乐特征置零的概率。"
+            "使模型学会 (∅, lead) 条件下的生成（无音乐推理）。建议值 0.1~0.2。"
+        ),
+    )
+    parser.add_argument(
+        "--drop_prob_lead", type=float, default=0.15,
+        help=(
+            "仅双人模式有效。训练时随机将主舞动作置零的概率。"
+            "使模型学会 (music, ∅) 条件下的生成（无主舞推理，退化为单人模式）。建议值 0.1~0.2。"
         ),
     )
     opt = parser.parse_args()
@@ -117,7 +123,7 @@ def parse_test_opt():
     # ---- 双人舞推理参数 ----
     parser.add_argument(
         "--duet", action="store_true",
-        help="双人舞模式：需提供 --lead_motion_dir，使用双人 checkpoint",
+        help="双人舞模式：使用双人 checkpoint，支持多路 CFG 控制",
     )
     parser.add_argument(
         "--lead_motion_dir",
@@ -125,14 +131,22 @@ def parse_test_opt():
         default="",
         help=(
             "主舞动作的预处理切片目录（每个 .pkl 含 pos[300,3] 和 q[300,72]，60fps）。"
-            "不提供时退化为原始单人生成模式（需要用单人 checkpoint）。"
+            "不提供或设 --guidance_lead 0 时退化为纯音乐生成模式。"
         ),
     )
     parser.add_argument(
-        "--no_music", action="store_true",
+        "--guidance_music", type=float, default=2.0,
         help=(
-            "仅双人模式有效。推理时将音乐特征置零，仅凭主舞动作生成伴舞。"
-            "需要模型训练时使用了 --music_drop_prob > 0（否则效果差）。"
+            "音乐条件的 CFG guidance weight。"
+            "0 = 不使用音乐条件；建议值 1.5~3.0。"
+        ),
+    )
+    parser.add_argument(
+        "--guidance_lead", type=float, default=2.0,
+        help=(
+            "主舞动作条件的 CFG guidance weight（仅双人模式有效）。"
+            "0 = 不使用主舞条件（退化为单人生成）；建议值 1.5~3.0。"
+            "需要训练时使用了 --drop_prob_lead > 0。"
         ),
     )
     opt = parser.parse_args()

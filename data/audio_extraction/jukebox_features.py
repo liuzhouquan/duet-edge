@@ -28,10 +28,12 @@ def extract(fpath, skip_completed=True, dest_dir="aist_juke_feats"):
 def extract_folder(src, dest):
     fpaths = Path(src).glob("*")
     fpaths = sorted(list(fpaths))
-    extract_ = partial(extract, skip_completed=False, dest_dir=dest)
+    extract_ = partial(extract, skip_completed=True, dest_dir=dest)
     for fpath in tqdm(fpaths):
-        rep, path = extract_(fpath)
-        np.save(path, rep)
+        result = extract_(fpath)
+        if result is not None:
+            rep, path = result
+            np.save(path, rep)
 
 
 if __name__ == "__main__":

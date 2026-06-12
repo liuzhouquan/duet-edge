@@ -85,6 +85,17 @@ python eval/aistpp_lma_baseline.py --data_dir ../aist_plusplus_final/motions --o
 python eval/lma_similarity.py --lead_dir eval/motions/lead/ --follower_dir eval/motions/follower/
 ```
 
+**Paper-aligned 17-metric LMA report (Zhou et al. IUI '25 §4.2):**
+```bash
+# Sweeps full + lead_only configs across all available checkpoints, reusing
+# eval/pfc_val_*_per_slice/ pkls (no model inference). Writes a Markdown
+# appendix report + JSON to eval/lma17_report/.
+python eval/run_lma17_sweep.py --out_dir eval/lma17_report
+```
+The 17 metrics = Body (8) + Effort (7) + Space (2). Shape (10) is excluded
+per the paper. See `eval/lma17_features.py` for the metric definitions and
+`eval/lma17_report/lma17_report.md` for the rendered appendix.
+
 **Evaluate (Physical Foot Contact metric):**
 ```bash
 python eval/eval_pfc.py --motion_path eval/motions/
@@ -132,7 +143,42 @@ lead motion (151-dim) + music features (4800-dim)
 
 **Sequence length:** 150 frames (5 seconds @ 30 FPS). Long sequences use `long_ddim_sample()` with overlapping chunks to prevent discontinuities.
 
-**Classifier-free guidance:** 25% of training samples drop conditioning (`cond_drop_prob=0.25`); inference uses `guidance_weight=2`. In duet mode, the entire cond vector (lead motion + music) is dropped together.
+**Classifier-free guidance (solo):** 25% of training samples drop the full conditioning via `cond_drop_prob=0.25` (token-level: the *projected* cond embedding is replaced by a learned `null_cond_embed` parameter in `DanceDecoder.forward`); inference uses `guidance_weight=2` (standard 2-pass CFG). This follows Ho & Salimans (arXiv 2207.12598).
+
+**Classifier-free guidance (duet — multi-conditional):** TWO LAYERS of dropout stack during duet training. Understanding the interaction matters for paper writing and any future re-training decisions.
+
+*Layer 1 — Input-level partial dropout* (duet-specific, applied in `EDGE.py:247-261` before `diffusion()` is called):
+- `--drop_prob_lead` (default `0.15`): zeros the first 151 dims of the cond vector (lead motion portion) with probability 0.15 per sample.
+- `--drop_prob_music` (default `0.15`): zeros the remaining dims (music features) with probability 0.15 per sample.
+- These two masks are sampled **independently**, so the four conditioning regimes appear with the following pre-Layer-2 probabilities:
+
+  | Cond seen by `diffusion()` | Probability |
+  |---|---|
+  | `(lead, music)` — both present | `0.85 × 0.85 = 72.25%` |
+  | `(lead, ∅)`     — music zeroed | `0.85 × 0.15 = 12.75%` |
+  | `(∅, music)`    — lead zeroed  | `0.15 × 0.85 = 12.75%` |
+  | `(∅, ∅)`        — both zeroed  | `0.15 × 0.15 =  2.25%` |
+
+*Layer 2 — Token-level dropout* (inherited from EDGE, applied inside `DanceDecoder.forward` via `cond_drop_prob=0.25`):
+- After Layer 1, the cond vector is projected through `cond_projection`. With probability 0.25 per sample, this projected embedding is **then** entirely replaced by `null_cond_embed` (the same learned-null mechanism EDGE solo uses).
+- This produces a "completely unconditional" signal regardless of what Layer 1 did, so the model learns a stable `ε_∅` baseline (necessary for CFG to work).
+
+*Resulting effective distribution* (Layer 1 ⊗ Layer 2, approximate):
+- Fully unconditional `ε_∅` seen by model: `≈ 25% + (1−25%) × 2.25% ≈ 27%`
+- Full `(lead, music)` conditioning: `≈ 75% × 72.25% ≈ 54%`
+- Partial `(lead, ∅)` and `(∅, music)`: `≈ 10%` each
+- This explains why the lead-only inference mode (`--guidance_music 0 --guidance_lead 2`) generalizes well at test time: the model has explicitly seen ~10% of training samples in that exact regime.
+
+*Inference — Composable Diffusion three-pass formula* (`DanceDecoder.guided_forward`, lines ~362-368):
+```
+ε_∅       = forward(x, cond, cond_drop_prob=1)         # both nulled at token level
+ε_music   = forward(x, cond_with_lead_zeroed,   …)     # only music
+ε_lead    = forward(x, cond_with_music_zeroed,  …)     # only lead
+ε         = ε_∅  +  w_music · (ε_music − ε_∅)  +  w_lead · (ε_lead − ε_∅)
+```
+This is the additive multi-conditional CFG from Liu et al., **ECCV 2022** ("Compositional Visual Generation with Composable Diffusion Models"), specialised to two conditioning streams. Setting `--guidance_lead 0` reduces to EDGE-style music-only generation; `--guidance_music 0` is the lead-only mode that empirically performs best in our duet setting. `--lead_motion_dir` is optional at inference — if omitted, the lead portion defaults to zeros and `--guidance_lead` must also be `0` (otherwise you guide toward a zero-lead OOD point).
+
+**Important: any change to `cond_drop_prob`, `--drop_prob_lead`, or `--drop_prob_music` REQUIRES full retraining.** These probabilities shape the implicit training-time conditioning distribution that the model has converged to; modifying them invalidates the existing checkpoints' learned `ε_∅` and partial-cond paths. Current defaults (0.25 / 0.15 / 0.15) have produced LMA ≈ 0.93 on val (close to the 0.94 human-pair ceiling), so retuning is generally not worth a full retrain.
 
 **Checkpoint format:** `{"ema_state_dict", "model_state_dict", "optimizer_state_dict", "normalizer"}`. Always load with EMA weights for inference.
 
@@ -142,17 +188,62 @@ lead motion (151-dim) + music features (4800-dim)
 
 **Normalizer:** Motion statistics (mean/std) are computed from the training set and stored in checkpoints — apply consistently across splits.
 
+**⚠️ Root-position scaling — `motions/` vs `motions_sliced/` (THIS HAS BIT US):**
+The raw mocap `pos` field (= AIST++ `smpl_trans`) is **in unscaled mocap units** (typically ~50–180 cm or so per coordinate). AIST++ provides a `smpl_scaling` value per sequence (typically ~88) that converts to model units.
+
+| File location | `pos` field state | `scale` key present? |
+|---|---|---|
+| `data/<split>/motions/<seq>.pkl` (raw, written by `filter_split_data.py`) | **NOT divided by scale** (raw mocap units, max ~180) | ✓ yes |
+| `data/<split>/motions_sliced/<seq>_slice{N}.pkl` (written by `data/slice.py:34`) | **already divided by scale** (model units, max ~2) | ✗ no |
+
+Symptom of mishandling: PFC = ~8000 instead of ~1.5 (since PFC ∝ velocity²; 88² ≈ 7700). LMA also collapses to ~0.6 when mixing scaled and unscaled joint trajectories across lead vs follower (Pearson is scale-invariant per-axis but Laban features mix axes).
+
+**Rule:** any helper that reads from `data/<split>/motions/<seq>.pkl` directly (e.g., `eval/run_test_eval_longmode.py`'s GT FK step) must apply `pos = pos / data["scale"][0]` before calling `motion_to_joints`. Reading from `motions_sliced/` requires no scaling adjustment.
+
 **Device compatibility:** `pin_memory` in DataLoader is enabled only when CUDA is available. `torch.cuda.empty_cache()` is guarded by `is_available()`.
 
 ## Data Splits
 
-The original AIST++ crossmodal splits have val and test sharing the same 10 music IDs (known leakage issue). For the duet task, new splits are provided at `data/splits/`:
+We use the **official AIST++ crossmodal splits** directly (located at `aist_plusplus_final/splits/`). Do NOT create custom split files.
 
-| File | Music IDs | Sequences | Notes |
-|------|-----------|-----------|-------|
-| `duet_train.txt` | 40 (4/genre) | 942 | Used for training |
-| `duet_val.txt`   | 10 (1/genre) | 237 | Monitoring during training |
-| `duet_test.txt`  | 10 (1/genre) | 229 | Final evaluation only — same songs as official crossmodal_test |
+| Official file | Seqs | Style | Choreography | Final duet pairs | Disk location |
+|---|---|---|---|---|---|
+| `crossmodal_train.txt` | 980 | sBM + sFM | ch03–ch10 | **383 pairs** (after ignore_list filter) | `data/train/` |
+| `crossmodal_val.txt`   |  20 | sBM only  | ch01 | **10 pairs** | `data/val/` |
+| `crossmodal_test.txt`  |  20 | sBM only  | ch02 | **10 pairs** | `data/test/` |
 
-Splits are disjoint at music_id level: no sequence from the same song appears in two different splits.
-Generated by `data/create_duet_splits.py` — re-run that script if the data changes.
+`383 = 400 raw pairs − 17 filtered by AIST++ `ignore_list.txt`` (motion/audio desync, mocap failure). `create_duet_pairs.py` enforces this filter so the JSON contains no phantom pairs.
+
+**Why val and test share the same 10 music IDs:** This is intentional AIST++ design for crossmodal evaluation — val uses choreography `ch01` and test uses `ch02` for the same 10 songs. For the duet task this is fine: the music features are shared, but the lead motion conditioning (different choreography) and the ground-truth follower motions are completely different between val and test.
+
+**Duet pairing rule (sBM sequences only):** Group by `(music_id, ch_id)` — same music, same choreography, different `dancer_id`. Each group of 2 dancers becomes one (lead, follower) pair (lead = lexicographically smaller dancer_id). sFM sequences are excluded. Sequences listed in `ignore_list.txt` are removed BEFORE pairing (must match `filter_split_data.py`).
+
+**Files in `data/splits/`:**
+- `crossmodal_train.txt` / `crossmodal_val.txt` / `crossmodal_test.txt` — copies of official files
+- `ignore_list.txt` — AIST++ official "bad data" list (46 sequences, applied by both `create_duet_pairs.py` and `filter_split_data.py`)
+- `duet_pairs_{train,val,test}.json` — generated by `create_duet_pairs.py`
+
+Re-generate pair files if data changes:
+```bash
+cd data && python create_duet_pairs.py
+```
+
+### ⚠️ IMPORTANT: directory name ≠ ML-semantic role
+
+Due to EDGE's original 2-split design (train/test only, no `val`), the duet
+extension added a `val/` directory but **the training loop (`EDGE.py`) was
+never updated** to read it. This produces a counter-intuitive mapping:
+
+| Disk directory | Loaded by | What the code prints | Actual ML role |
+|---|---|---|---|
+| `data/train/` | `train_data_loader` in `EDGE.py` | `"Train Loss"` | Training (gradient updates) |
+| **`data/test/`** | **`test_data_loader` in `EDGE.py`** (`train=False`) | **`"Val Loss"`, in-training LMA** | **Training monitor** (looked at every `save_interval` epoch — *not* held-out!) |
+| **`data/val/`** | **`eval/run_full_sweep.py`, `eval/run_leadonly_eval.py`, `eval/run_val_pfc.py`, `render.py`** | sweep outputs in `eval/full_sweep*/` | **Held-out evaluation** (clean, never seen during training) |
+
+**Consequence for paper reporting:**
+- `data/val/` is the **actually clean** held-out set — use it for sweep-based checkpoint selection AND final reported numbers.
+- `data/test/` was repeatedly observed during training (`save_interval=50` epoch loss + LMA + render demos) — treat it as the in-training monitor split, NOT as a final test set.
+- In writing, refer to `data/val/` as the **evaluation set**. The reason `test/` exists but isn't reported on: EDGE's original train-loop uses `test/` as a monitoring split (a carry-over from the solo two-split design), so the `val/` directory added for the duet extension is the genuine held-out evaluation set.
+- Do NOT swap them. The `EDGE.py:178` hard-coded `train=False → "test"` path is intentional to stay drop-in compatible with EDGE solo checkpoints; renaming would break checkpoint loading and future merges from EDGE upstream.
+
+**TL;DR: always use `data/val/` for reporting metrics. `data/test/` is a monitoring split (observed during training), not a held-out test set, due to the legacy two-split naming.**

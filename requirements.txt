@@ -1,13 +1,65 @@
-torch==1.12.1
-torchvision==0.13.1
-torchaudio==0.12.1
-einops
-librosa
-matplotlib
-numpy
-soundfile
-tqdm
-p_tqdm
-wandb
-scipy
-accelerate
+# EDGE — pip requirements (verified 2026-05-19, Python 3.10, CUDA 11.8, H200)
+#
+# SETUP ORDER — do NOT just `pip install -r requirements.txt`:
+#
+#   1. Create conda env (handles PyTorch + CUDA correctly):
+#        bash setup_env.sh          ← recommended, handles all edge cases
+#      or manually:
+#        conda env create -f environment-linux.yml
+#
+#   2. Install pip packages inside the env:
+#        conda activate edge && pip install -r requirements.txt
+#
+#   3. Special installs (see notes at bottom of this file):
+#        pytorch3d  — prebuilt wheel, needs --find-links
+#        jukemirlib — GitHub-only, needs setuptools<70 first
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Training infrastructure
+accelerate==0.34.2
+wandb==0.26.1
+
+# Motion / audio processing
+einops==0.8.2
+librosa>=0.10  # 0.9.x uses scipy.signal.hann which was removed in scipy 1.9+
+soundfile==0.10.3
+
+# Parallelism
+p_tqdm==1.4.2
+
+# Visualization (ffmpeg via conda, not pip — see environment-linux.yml)
+matplotlib==3.10.8
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Managed by conda (environment-linux.yml) — listed for reference only.
+# Re-installing via pip can break CUDA linkage.
+#
+#   torch==2.1.2          pytorch channel  +cuda=11.8
+#   torchaudio==2.1.2
+#   torchvision==0.16.2
+#   numpy==1.26.4         pinned <2.0 (numpy 2.x breaks several deps)
+#   scipy==1.15.2
+#   scikit-learn==1.7.2   conda-forge
+#   numba==0.65.1         pulled in by librosa
+#   tqdm==4.45.0
+#   fvcore                pytorch3d dependency, conda-forge
+#   iopath                pytorch3d dependency, conda-forge
+#   ffmpeg                conda-forge, used by vis.py for video rendering
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Special installs — must be done manually (setup_env.sh handles these):
+#
+# pytorch3d 0.7.5  (--extra-index-url silently fails for this URL):
+#   pip install pytorch3d \
+#     --find-links https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu118_pyt210/download.html
+#
+# jukemirlib (not on PyPI; setuptools must be <70 before install):
+#   pip install "setuptools<70"
+#   pip install git+https://github.com/rodrigo-castellon/jukemirlib.git \
+#     --no-build-isolation
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Local to this repo — no external install needed:
+#   model/adan.py                   Adan optimizer
+#   model/rotary_embedding_torch.py rotary positional embeddings

@@ -1,17 +1,21 @@
 #!/bin/bash
 #SBATCH --job-name=edge-train
-#SBATCH --time=48:00:00
+#SBATCH --time=04:00:00
 #SBATCH --open-mode=append
 #SBATCH --output=logs/train-output.log
 #SBATCH --error=logs/train-error.log
 #SBATCH --gres=gpu:1
 
-cd /data/<your_username>/EDGE
+cd /data/zliu753/EDGE
 
-source ~/miniconda3/etc/profile.d/conda.sh
+# /home is ephemeral on this cluster; init_env.sh remaps HOME → /data/zliu753
+# and sources conda, so all config files persist across sessions.
+source /data/zliu753/init_env.sh
 conda activate edge
 
 mkdir -p logs
+
+export WANDB_MODE=disabled
 
 # ── 模式说明 ──────────────────────────────────────────────────────────────────
 #
@@ -40,53 +44,68 @@ mkdir -p logs
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── 单人模式训练（默认，兼容官方预训练权重）────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# 【当前激活】双人模式 baseline 验证训练
+#   目的：用轻量 baseline 特征（35维）验证 duet fine-tune 流程是否跑通
+#   前提：run_prepare_data.sh 已完成（data/train/baseline_feats/ 存在）
+#   完成后换成 jukebox 正式训练
+# ══════════════════════════════════════════════════════════════════════════════
 accelerate launch train.py \
-  --batch_size 128 \
-  --epochs 2000 \
-  --feature_type jukebox \
+  --batch_size 64 \
+  --epochs 200 \
+  --feature_type baseline \
   --learning_rate 0.0002 \
+  --duet \
+  --drop_prob_music 0.15 \
+  --drop_prob_lead 0.15 \
   --save_latest_interval 10 \
-  --save_interval 100
+  --save_interval 50 \
+  --checkpoint checkpoint.pt
 
-# ── 单人模式断点续训（被中止后用这条命令重新提交）─────────────────────────
+# ── 双人 baseline 断点续训 ──────────────────────────────────────────────────
 # accelerate launch train.py \
-#   --batch_size 128 \
-#   --epochs 2000 \
-#   --feature_type jukebox \
+#   --batch_size 64 \
+#   --epochs 200 \
+#   --feature_type baseline \
 #   --learning_rate 0.0002 \
+#   --duet \
+#   --drop_prob_music 0.15 \
+#   --drop_prob_lead 0.15 \
 #   --save_latest_interval 10 \
-#   --save_interval 100 \
+#   --save_interval 50 \
 #   --checkpoint runs/train/exp/weights/latest.pt
 
-# ── 双人模式训练 ───────────────────────────────────────────────────────────
+# ── 双人模式正式训练（jukebox，验证通过后用）─────────────────────────────
 # accelerate launch train.py \
 #   --batch_size 128 \
 #   --epochs 2000 \
 #   --feature_type jukebox \
 #   --learning_rate 0.0002 \
 #   --duet \
-#   --save_latest_interval 10 \
-#   --save_interval 100
-
-# ── 双人模式断点续训 ────────────────────────────────────────────────────────
-# accelerate launch train.py \
-#   --batch_size 128 \
-#   --epochs 2000 \
-#   --feature_type jukebox \
-#   --learning_rate 0.0002 \
-#   --duet \
-#   --save_latest_interval 10 \
-#   --save_interval 100 \
-#   --checkpoint runs/train/exp/weights/latest.pt
-
-# ── 从单人权重 fine-tune 双人模式（推荐，比从头训练快）─────────────────────
-# accelerate launch train.py \
-#   --batch_size 128 \
-#   --epochs 2000 \
-#   --feature_type jukebox \
-#   --learning_rate 0.0002 \
-#   --duet \
+#   --drop_prob_music 0.15 \
+#   --drop_prob_lead 0.15 \
 #   --save_latest_interval 10 \
 #   --save_interval 100 \
 #   --checkpoint checkpoint.pt
+
+# ── 双人模式正式训练断点续训 ────────────────────────────────────────────────
+# accelerate launch train.py \
+#   --batch_size 128 \
+#   --epochs 2000 \
+#   --feature_type jukebox \
+#   --learning_rate 0.0002 \
+#   --duet \
+#   --drop_prob_music 0.15 \
+#   --drop_prob_lead 0.15 \
+#   --save_latest_interval 10 \
+#   --save_interval 100 \
+#   --checkpoint runs/train/exp/weights/latest.pt
+
+# ── 单人模式训练（兼容官方预训练权重，不用 --duet）────────────────────────
+# accelerate launch train.py \
+#   --batch_size 128 \
+#   --epochs 2000 \
+#   --feature_type jukebox \
+#   --learning_rate 0.0002 \
+#   --save_latest_interval 10 \
+#   --save_interval 100

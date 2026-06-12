@@ -248,12 +248,14 @@ class DanceDecoder(nn.Module):
         cond_feature_dim: int = 4800,
         activation: Callable[[Tensor], Tensor] = F.gelu,
         use_rotary=True,
+        lead_dim: int = 0,   # >0 enables duet multi-conditional CFG; equals repr_dim (151)
         **kwargs
     ) -> None:
 
         super().__init__()
 
         output_feats = nfeats
+        self.lead_dim = lead_dim  # 0 = solo, >0 = duet split point in cond
 
         # positional embeddings
         self.rotary = None
@@ -328,11 +330,46 @@ class DanceDecoder(nn.Module):
         
         self.final_layer = nn.Linear(latent_dim, output_feats)
 
-    def guided_forward(self, x, cond_embed, times, guidance_weight):
-        unc = self.forward(x, cond_embed, times, cond_drop_prob=1)
-        conditioned = self.forward(x, cond_embed, times, cond_drop_prob=0)
+    def guided_forward(self, x, cond_embed, times, w_music, w_lead=None):
+        """Classifier-free guidance forward pass.
 
-        return unc + (conditioned - unc) * guidance_weight
+        Solo mode (lead_dim == 0): standard 2-pass CFG with w_music as the
+        single guidance weight.
+
+        Duet mode (lead_dim > 0): 3-pass additive (compositional) CFG.
+        The cond_embed is split at lead_dim into [lead | music].
+        Zeros are substituted for the dropped portion — consistent with how
+        training drops each part independently.
+
+          eps = eps_unc
+              + w_music * (eps_music_only - eps_unc)
+              + w_lead  * (eps_lead_only  - eps_unc)
+
+        Setting w_lead=0  → pure music-to-dance (original EDGE behaviour).
+        Setting w_music=0 → pure lead-to-follower without music.
+        Both > 0          → full duet conditioning.
+        """
+        if self.lead_dim == 0 or w_lead is None:
+            # Solo mode: standard 2-pass CFG
+            eps_unc  = self.forward(x, cond_embed, times, cond_drop_prob=1)
+            eps_cond = self.forward(x, cond_embed, times, cond_drop_prob=0)
+            return eps_unc + (eps_cond - eps_unc) * w_music
+
+        # Duet mode: build the two partial-null cond variants using zeros,
+        # matching the zeroing convention used during training dropout.
+        music_cond = cond_embed.clone()
+        music_cond[:, :, :self.lead_dim] = 0.0   # null lead, keep music
+
+        lead_cond = cond_embed.clone()
+        lead_cond[:, :, self.lead_dim:] = 0.0    # null music, keep lead
+
+        eps_unc   = self.forward(x, cond_embed,  times, cond_drop_prob=1)  # full null
+        eps_music = self.forward(x, music_cond,  times, cond_drop_prob=0)
+        eps_lead  = self.forward(x, lead_cond,   times, cond_drop_prob=0)
+
+        return (eps_unc
+                + w_music * (eps_music - eps_unc)
+                + w_lead  * (eps_lead  - eps_unc))
 
     def forward(
         self, x: Tensor, cond_embed: Tensor, times: Tensor, cond_drop_prob: float = 0.0

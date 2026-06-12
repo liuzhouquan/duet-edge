@@ -43,7 +43,8 @@ class AISTPPDataset(Dataset):
         self.normalizer = normalizer
         self.data_len = data_len
 
-        pickle_name = "processed_train_data.pkl" if train else "processed_test_data.pkl"
+        split = "train" if train else "test"
+        pickle_name = f"processed_{split}_{feature_type}_data.pkl"
 
         backup_path = Path(backup_path)
         backup_path.mkdir(parents=True, exist_ok=True)

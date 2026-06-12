@@ -97,8 +97,10 @@ smpl_offsets = [
 
 
 def set_line_data_3d(line, x):
-    line.set_data(x[:, :2].T)
-    line.set_3d_properties(x[:, 2])
+    # Model output is already Z-up (training preprocessing rotates Y-up → Z-up)
+    # X=lateral, Y=depth, Z=height — no swap needed
+    line.set_data(x[:, :2].T)        # matplotlib X=data X, matplotlib Y=data Y
+    line.set_3d_properties(x[:, 2])  # matplotlib Z=data Z (height)
 
 
 def set_scatter_data_3d(scat, x, c):
@@ -147,16 +149,10 @@ def plot_single_pose(num, poses, lines, ax, axrange, scat, contact):
     if num == 0:
         if isinstance(axrange, int):
             axrange = (axrange, axrange, axrange)
-        xcenter, ycenter, zcenter = 0, 0, 2.5
         stepx, stepy, stepz = axrange[0] / 2, axrange[1] / 2, axrange[2] / 2
-
-        x_min, x_max = xcenter - stepx, xcenter + stepx
-        y_min, y_max = ycenter - stepy, ycenter + stepy
-        z_min, z_max = zcenter - stepz, zcenter + stepz
-
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_zlim(z_min, z_max)
+        ax.set_xlim(-stepx, stepx)
+        ax.set_ylim(-stepy, stepy)
+        ax.set_zlim(1.0, 1.0 + axrange[2])
 
 
 def _draw_skeleton_lines(ax, color):
@@ -218,12 +214,16 @@ def skeleton_render(
         fig = plt.figure()
         ax = fig.add_subplot(projection="3d")
 
-        point = np.array([0, 0, 1])
-        normal = np.array([0, 0, 1])
-        d = -point.dot(normal)
-        xx, yy = np.meshgrid(np.linspace(-1.5, 1.5, 2), np.linspace(-1.5, 1.5, 2))
-        z = (-normal[0] * xx - normal[1] * yy - d) * 1.0 / normal[2]
-        ax.plot_surface(xx, yy, z, zorder=-11, cmap=cm.twilight)
+        # 25-degree elevated front-facing view (no floor plane — it was covering feet)
+        ax.view_init(elev=25, azim=-90)
+
+        # Separate the two dancers left/right so they don't overlap
+        X_OFFSET = 0.8
+        if poses_lead is not None:
+            poses = poses.copy()
+            poses[:, :, 0] += X_OFFSET          # follower → right
+            poses_lead = poses_lead.copy()
+            poses_lead[:, :, 0] -= X_OFFSET     # lead → left
 
         # Follower skeleton (always present)
         lines_f, scat_f = _draw_skeleton_lines(ax, color_follower)
@@ -236,14 +236,19 @@ def skeleton_render(
 
         axrange = 3
 
+        # Labels — ASCII only to avoid font rendering issues on Linux servers
+        if poses_lead is not None:
+            ax.text2D(0.22, 0.94, "Lead", transform=ax.transAxes,
+                      color=color_lead,     fontsize=12, fontweight="bold", ha="center")
+            ax.text2D(0.78, 0.94, "Follower", transform=ax.transAxes,
+                      color=color_follower, fontsize=12, fontweight="bold", ha="center")
+
         def animate(num):
             # update axis range on first frame
             if num == 0:
-                xcenter, ycenter, zcenter = 0, 0, 2.5
-                step = axrange / 2
-                ax.set_xlim(xcenter - step, xcenter + step)
-                ax.set_ylim(ycenter - step, ycenter + step)
-                ax.set_zlim(zcenter - step, zcenter + step)
+                ax.set_xlim(-2.0, 2.0)           # wider X for two side-by-side dancers
+                ax.set_ylim(-axrange/2, axrange/2)
+                ax.set_zlim(1.0, 1.0 + axrange)  # foot≈1.0m, head≈2.5m
             _update_skeleton(num, poses, lines_f, scat_f, contact_f)
             if poses_lead is not None:
                 _update_skeleton(num, poses_lead, lines_l, scat_l, contact_l)

@@ -2,10 +2,15 @@
 *.pkl
 *.pt
 *.npy
+*.npz
 *.zip
 *.gif
 *.mp4
 *.wav
+*.exe
+*.fbx
+*.log
+*.bak*
 
 # ── 生成的数据目录（不进 git）──────────────────────────────────────────────
 data/edge_aistpp/
@@ -20,6 +25,7 @@ dataset_backups/
 runs/
 wandb/
 renders/
+logs/
 cached_features/
 custom_music/
 
